@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sentiment Analysis</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f1a;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 6px;
+      background: linear-gradient(90deg, #6c63ff, #48cae4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p.subtitle { color: #888; margin-bottom: 32px; font-size: 0.95rem; }
+    .card {
+      background: #1a1a2e;
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 680px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    textarea {
+      width: 100%;
+      height: 130px;
+      background: #0f0f1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #eee;
+      padding: 14px;
+      font-size: 1rem;
+      resize: vertical;
+      outline: none;
+      transition: border 0.2s;
+    }
+    textarea:focus { border-color: #6c63ff; }
+    button {
+      margin-top: 14px;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #6c63ff, #48cae4);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.88; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .result {
+      margin-top: 24px;
+      padding: 20px;
+      border-radius: 12px;
+      display: none;
+      text-align: center;
+      animation: fadeIn 0.4s ease;
+    }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .result .emoji { font-size: 3rem; }
+    .result .label { font-size: 1.6rem; font-weight: 700; margin: 8px 0; }
+    .result .conf-title { font-size: 0.85rem; color: #aaa; margin-top: 14px; margin-bottom: 8px; }
+    .bar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .bar-wrap span { width: 70px; text-align: right; font-size: 0.85rem; color: #aaa; }
+    .bar-bg { flex: 1; background: #2a2a3e; border-radius: 6px; height: 10px; }
+    .bar-fill { height: 10px; border-radius: 6px; transition: width 0.6s ease; }
+    .bar-pct { width: 42px; font-size: 0.82rem; color: #ccc; }
+    .error { color: #e74c3c; margin-top: 12px; font-size: 0.9rem; text-align:center; }
+    .examples { margin-top: 28px; }
+    .examples p { font-size: 0.82rem; color: #666; margin-bottom: 8px; }
+    .chip {
+      display: inline-block;
+      background: #2a2a3e;
+      border-radius: 20px;
+      padding: 6px 14px;
+      margin: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .chip:hover { background: #3a3a5e; }
+  </style>
+</head>
+<body>
+  <h1>🧠 Sentiment Analyzer</h1>
+  <p class="subtitle">NLP-powered review sentiment classification</p>
+
+  <div class="card">
+    <textarea id="reviewText" placeholder="Paste a product review or comment here..."></textarea>
+    <button id="analyzeBtn" onclick="analyze()">Analyze Sentiment</button>
+    <div id="error" class="error"></div>
+
+    <div class="result" id="result">
+      <div class="emoji" id="emoji"></div>
+      <div class="label" id="label"></div>
+      <div class="conf-title">Confidence Scores</div>
+      <div id="bars"></div>
+    </div>
+
+    <div class="examples">
+      <p>Try an example:</p>
+      <span class="chip" onclick="setExample(this)">Amazing product, highly recommend!</span>
+      <span class="chip" onclick="setExample(this)">Terrible quality, broke after one day.</span>
+      <span class="chip" onclick="setExample(this)">It's okay, nothing special really.</span>
+      <span class="chip" onclick="setExample(this)">Fast delivery and great packaging!</span>
+    </div>
+  </div>
+
+  <script>
+    const COLORS = { Positive: '#2ecc71', Neutral: '#f39c12', Negative: '#e74c3c' };
+
+    function setExample(el) {
+      document.getElementById('reviewText').value = el.innerText;
+    }
+
+    async function analyze() {
+      const text = document.getElementById('reviewText').value.trim();
+      const btn  = document.getElementById('analyzeBtn');
+      const err  = document.getElementById('error');
+      const res  = document.getElementById('result');
+
+      err.innerText = '';
+      res.style.display = 'none';
+
+      if (!text) { err.innerText = 'Please enter some text.'; return; }
+
+      btn.disabled = true;
+      btn.innerText = 'Analyzing...';
+
+      try {
+        const resp = await fetch('/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const data = await resp.json();
+        if (data.error) { err.innerText = data.error; return; }
+
+        document.getElementById('emoji').innerText = data.emoji;
+        document.getElementById('label').innerText  = data.sentiment;
+        document.getElementById('label').style.color = data.color;
+
+        const conf = data.confidence;
+        const barsHTML = Object.entries(conf)
+          .sort((a, b) => b[1] - a[1])
+          .map(([name, pct]) => `
+            <div class="bar-wrap">
+              <span>${name}</span>
+              <div class="bar-bg">
+                <div class="bar-fill" style="width:${pct}%;background:${COLORS[name]}"></div>
+              </div>
+              <div class="bar-pct">${pct}%</div>
+            </div>`).join('');
+
+        document.getElementById('bars').innerHTML = barsHTML;
+        res.style.backgroundColor = data.color + '18';
+        res.style.border = `1px solid ${data.color}44`;
+        res.style.display = 'block';
+      } catch (e) {
+        err.innerText = 'Server error. Make sure Flask is running.';
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Analyze Sentiment';
+      }
+    }
+  </script>
+</body>
+</html>
